@@ -66,7 +66,7 @@ Environment variables (all optional):
 ## Deploying
 
 1. Fork or push this repository to GitHub.
-2. Import it in Vercel (framework preset: Next.js, no settings needed). `vercel.json` disables deployments for the `data` branch.
+2. Import it in Vercel (framework preset: Next.js, no settings needed). `vercel.json` disables deployments for the `data` branch; the collector copies it into that branch so Vercel sees it there. As a belt-and-braces measure you can also set the project's *Ignored Build Step* to `[ "$VERCEL_GIT_COMMIT_REF" != "data" ]`.
 3. Enable the **Collect history** workflow under Actions (scheduled every 10 minutes, no secrets beyond the default `GITHUB_TOKEN`). Because GitHub schedules are best-effort, also set `GITHUB_DISPATCH_TOKEN` in Vercel so that page views keep the history fresh; an uptime pinger hitting the site every 5 minutes makes this fully reliable.
 4. If the repository is not `Gabbe-x/monad-validators`, set `HISTORY_BASE_URL` in Vercel to `https://raw.githubusercontent.com/<owner>/<repo>/data`.
 

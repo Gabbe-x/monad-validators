@@ -59,6 +59,9 @@ jobs:
 
       - name: Publish data branch
         run: |
+          # Vercel reads vercel.json from the branch it is asked to build, so the
+          # "do not deploy the data branch" rule has to travel with the data branch.
+          cp vercel.json out/
           cd out
           git init -q -b data
           git config user.name "github-actions[bot]"
