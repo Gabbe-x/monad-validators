@@ -16,7 +16,7 @@ const STATUS: Record<ValidatorStatus, { label: string; cls: string; title: strin
   joining: { label: "joining", cls: "bg-info/15 text-info", title: "In the snapshot set: becomes active next epoch" },
   leaving: { label: "leaving", cls: "bg-warn/15 text-warn", title: "Active now but not in the snapshot: drops out next epoch" },
   candidate: { label: "candidate", cls: "bg-panel-2 text-muted", title: "Registered with stake but outside the top 200" },
-  inactive: { label: "inactive", cls: "bg-panel-2 text-muted", title: "Registered, not in any set" },
+  inactive: { label: "inactive", cls: "bg-panel-2 text-muted", title: "Registered but in no validator set: stake below the 10M MON activation threshold, or decommissioned" },
 };
 
 export function StatusBadge({ status }: { status: ValidatorStatus }) {

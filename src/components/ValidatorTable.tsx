@@ -6,7 +6,7 @@ import { fmtCompact, fmtNum, fmtPct, shortAddr } from "@/lib/format";
 import { PerfBar, StatusBadge, ValidatorName } from "./ui";
 
 type SortKey = "rank" | "name" | "stake" | "share" | "commission" | "blocks24h" | "performance";
-type Filter = "all" | "active" | "joining" | "leaving" | "candidate";
+type Filter = "all" | "active" | "joining" | "leaving" | "candidate" | "inactive";
 
 export function ValidatorTable({
   network,
@@ -85,6 +85,7 @@ export function ValidatorTable({
     { key: "joining", label: "Joining", n: rows.filter((r) => r.status === "joining").length },
     { key: "leaving", label: "Leaving", n: rows.filter((r) => r.status === "leaving").length },
     { key: "candidate", label: "Candidates", n: rows.filter((r) => r.status === "candidate").length },
+    { key: "inactive", label: "Inactive", n: rows.filter((r) => r.status === "inactive").length },
   ];
 
   return (

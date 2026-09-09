@@ -15,9 +15,9 @@ import {
   getEpoch,
   getProposers,
   getRecentBlocks,
+  getAllValidators,
   getValidator,
   getValidatorSets,
-  getValidators,
   getWithdrawals,
   type EpochInfo,
   type ValidatorOnChain,
@@ -62,6 +62,7 @@ export interface Overview {
     validators: number;
     active: number;
     candidates: number;
+    inactive: number;
     consensusStakeMon: number;
     executionStakeMon: number;
     avgCommission: number;
@@ -87,8 +88,8 @@ async function buildOverview(network: NetworkId): Promise<Overview> {
     getHistory(network),
     getRecentBlocks(network, 30),
   ]);
-  const allIds = Array.from(new Set([...sets.consensus, ...sets.snapshot, ...sets.execution])).sort((a, b) => a - b);
-  const validators = await getValidators(network, allIds);
+  const maxSetId = Math.max(0, ...sets.consensus, ...sets.snapshot, ...sets.execution);
+  const validators = await getAllValidators(network, maxSetId);
   const cSet = new Set(sets.consensus);
   const sSet = new Set(sets.snapshot);
   const eSet = new Set(sets.execution);
@@ -167,6 +168,7 @@ async function buildOverview(network: NetworkId): Promise<Overview> {
       validators: rows.length,
       active: active.length,
       candidates: rows.filter((r) => r.status === "candidate").length,
+      inactive: rows.filter((r) => r.status === "inactive").length,
       consensusStakeMon: consensusTotal,
       executionStakeMon: executionTotal,
       avgCommission: active.length ? active.reduce((a, r) => a + r.commission, 0) / active.length : 0,

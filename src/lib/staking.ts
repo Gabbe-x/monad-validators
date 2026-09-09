@@ -145,12 +145,33 @@ export async function getValidators(network: NetworkId, ids: number[], blockNumb
   return out;
 }
 
+/** An unregistered id decodes to an all-zero struct. */
+export function isRegistered(v: ValidatorOnChain): boolean {
+  return !(v.authAddress === "0x0000000000000000000000000000000000000000" && v.stake === "0" && /^0x0*$/.test(v.secpPubkey));
+}
+
 export async function getValidator(network: NetworkId, id: number): Promise<ValidatorOnChain | null> {
   const [v] = await getValidators(network, [id]);
-  if (!v) return null;
-  // An unregistered id decodes to an all-zero struct.
-  if (v.authAddress === "0x0000000000000000000000000000000000000000" && v.stake === "0" && /^0x0*$/.test(v.secpPubkey)) return null;
+  if (!v || !isRegistered(v)) return null;
   return v;
+}
+
+/**
+ * Every registered validator, found by walking ids from 1 in chunks of 100 until a whole
+ * chunk is unregistered. Validator ids are assigned sequentially by addValidator, so a
+ * full empty chunk means the end of the id space. `atLeast` (e.g. the highest id seen in
+ * the validator sets) guarantees the walk does not stop early.
+ */
+export async function getAllValidators(network: NetworkId, atLeast = 0, blockNumber?: bigint): Promise<ValidatorOnChain[]> {
+  const out: ValidatorOnChain[] = [];
+  for (let start = 1; start < 20_000; start += 100) {
+    const ids = Array.from({ length: 100 }, (_, i) => start + i);
+    const chunk = await getValidators(network, ids, blockNumber);
+    const registered = chunk.filter(isRegistered);
+    out.push(...registered);
+    if (registered.length === 0 && start + 99 >= atLeast) break;
+  }
+  return out;
 }
 
 /** Proposer (validator id) of each block in [from, to]. Runs `concurrency` eth_calls in parallel. */

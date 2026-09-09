@@ -41,7 +41,7 @@ export default async function NetworkPage({ params, searchParams }: Props) {
 
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
           <Stat label="Epoch" value={o.epoch.epoch} sub={o.epoch.inEpochDelayPeriod ? "in epoch delay period" : eta ? `boundary in ~${eta}` : `${fmtNum(PROTOCOL.epochLengthBlocks)} blocks per epoch`} />
-          <Stat label="Active validators" value={o.totals.active} sub={`${o.totals.candidates} candidates waiting`} />
+          <Stat label="Active validators" value={o.totals.active} sub={`${o.totals.validators} registered · ${o.totals.candidates} candidates · ${o.totals.inactive} inactive`} />
           <Stat label="Consensus stake" value={`${fmtCompact(o.totals.consensusStakeMon)} MON`} sub={`${fmtCompact(o.totals.executionStakeMon)} MON incl. candidates`} />
           <Stat label="Median commission" value={fmtPct(o.totals.medianCommission, 1)} sub={`avg ${fmtPct(o.totals.avgCommission, 1)}`} />
           <Stat label="Nakamoto coefficient" value={o.totals.nakamoto} sub="validators to reach 1/3 of stake" />

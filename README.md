@@ -9,7 +9,7 @@ Everything on the site is read from the Monad **staking precompile** (`0x…1000
 ## What it shows
 
 **Validators** — the full active set (top 200 by stake) plus candidates, sortable by stake, share, commission and block production:
-- status derived from the three on-chain sets: `active` (consensus + snapshot), `joining` (in snapshot only, enters next epoch), `leaving` (in consensus only), `candidate` (registered but outside the top 200);
+- every registered validator (ids are walked from 1 until the id space ends), with status derived from the three on-chain sets: `active` (consensus + snapshot), `joining` (in snapshot only, enters next epoch), `leaving` (in consensus only), `candidate` (in the execution set but outside the top 200), `inactive` (registered but in no set, e.g. below the 10M MON activation threshold);
 - consensus stake and network share, commission, auth address, registry name and logo from [monad-developers/validator-info](https://github.com/monad-developers/validator-info), VDP participation;
 - **blocks proposed in the last 24 h vs. blocks expected from stake share**. MonadBFT leader selection is stake-weighted, so a healthy validator sits near 100 %; a validator that is down or missing rounds falls below;
 - network totals: consensus stake, median commission, Nakamoto coefficient, block time, epoch progress.
