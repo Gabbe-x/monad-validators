@@ -1,0 +1,65 @@
+# Collects block-production history for both networks and publishes it on the
+# `data` branch (a single orphan commit that is force-pushed every run, so the
+# branch never grows). The Next.js app reads that branch at request time.
+name: Collect history
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+
+      - name: Fetch previous history
+        run: |
+          mkdir -p data out
+          for n in mainnet testnet; do
+            curl -fsSL -o "data/$n.json" "https://raw.githubusercontent.com/${{ github.repository }}/data/$n.json?t=$(date +%s)" \
+              || echo "no previous data for $n"
+          done
+
+      - name: Collect mainnet
+        run: npx tsx collector/collect.ts mainnet --in data --out out
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Collect testnet
+        run: npx tsx collector/collect.ts testnet --in data --out out
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Keep previous data for any network that failed this run
+        run: |
+          for n in mainnet testnet; do
+            if [ ! -f "out/$n.json" ] && [ -f "data/$n.json" ]; then cp "data/$n.json" "out/$n.json"; echo "kept previous $n data"; fi
+          done
+          ls -la out
+
+      - name: Publish data branch
+        run: |
+          cd out
+          git init -q -b data
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -q -m "history $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" data
