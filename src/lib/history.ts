@@ -56,9 +56,6 @@ export interface HistoryFile {
   registry: { updatedAt: number; byId: Record<string, RegistryEntry> };
 }
 
-const DATA_BASE =
-  process.env.HISTORY_BASE_URL ?? "https://raw.githubusercontent.com/Gabbe-x/monad-validators/data";
-
 const STALE_AFTER_S = 12 * 60;
 let lastDispatch = 0;
 
@@ -85,12 +82,45 @@ function maybeDispatchCollector(updatedAt: number | null): void {
   }).catch(() => undefined);
 }
 
+const DATA_REPO = process.env.GITHUB_DISPATCH_REPO ?? "Gabbe-x/monad-validators";
+const DATA_BRANCH = "data";
+let refMemo: { sha: string; at: number } | null = null;
+
+/**
+ * raw.githubusercontent.com serves branch URLs from a CDN that ignores query strings and
+ * can return a copy that is well over its 5-minute TTL. Content addressed by commit SHA is
+ * immutable and therefore always correct, so resolve the branch head first (one small API
+ * call, memoised for two minutes) and fetch by SHA. Falls back to the branch URL if the API
+ * is unavailable or rate limited.
+ */
+async function resolveDataUrl(network: NetworkId): Promise<string> {
+  if (process.env.HISTORY_BASE_URL) return `${process.env.HISTORY_BASE_URL}/${network}.json`;
+  const now = Date.now();
+  if (!refMemo || now - refMemo.at > 120_000) {
+    try {
+      const headers: Record<string, string> = { accept: "application/vnd.github+json", "user-agent": "monad-validators" };
+      const token = process.env.GITHUB_DISPATCH_TOKEN;
+      if (token) headers.authorization = `Bearer ${token}`;
+      const res = await fetch(`https://api.github.com/repos/${DATA_REPO}/git/ref/heads/${DATA_BRANCH}`, {
+        headers,
+        cache: "no-store",
+        signal: AbortSignal.timeout(5000),
+      });
+      if (res.ok) {
+        const ref = (await res.json()) as { object?: { sha?: string } };
+        if (ref.object?.sha) refMemo = { sha: ref.object.sha, at: now };
+      }
+    } catch {
+      /* fall through to the branch URL */
+    }
+  }
+  const rev = refMemo?.sha ?? DATA_BRANCH;
+  return `https://raw.githubusercontent.com/${DATA_REPO}/${rev}/${network}.json`;
+}
+
 async function fetchHistory(network: NetworkId): Promise<HistoryFile | null> {
-  // raw.githubusercontent.com caches by URL for ~5 minutes; a slowly changing query
-  // string keeps the app from seeing a stale copy for longer than that.
-  const bust = Math.floor(Date.now() / 120_000);
   try {
-    const res = await fetch(`${DATA_BASE}/${network}.json?v=${bust}`, { cache: "no-store" });
+    const res = await fetch(await resolveDataUrl(network), { cache: "no-store" });
     if (!res.ok) {
       maybeDispatchCollector(null);
       return null;

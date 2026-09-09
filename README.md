@@ -58,9 +58,9 @@ Environment variables (all optional):
 
 | Variable | Purpose |
 | --- | --- |
-| `HISTORY_BASE_URL` | Base URL of the history JSON files (default: the `data` branch of this repo on raw.githubusercontent.com). |
+| `HISTORY_BASE_URL` | Base URL of the history JSON files. By default the app resolves the head commit of the `data` branch through the GitHub API and reads the files by commit SHA from raw.githubusercontent.com, which avoids the CDN serving a stale branch copy. |
 | `NEXT_PUBLIC_SITE_URL` | Canonical site URL for metadata. |
-| `GITHUB_DISPATCH_TOKEN` | Fine-grained GitHub token with *Actions: write* on this repository. When set, the app triggers the collector workflow itself whenever the published history is older than 12 minutes. Recommended: GitHub's own cron is best-effort and can fall hours behind. |
+| `GITHUB_DISPATCH_TOKEN` | Fine-grained GitHub token with *Actions: write* and *Contents: read* on this repository. When set, the app triggers the collector workflow itself whenever the published history is older than 12 minutes, and uses the token for the branch-head lookup (5,000 requests/hour instead of 60). Recommended: GitHub's own cron is best-effort and can fall hours behind. |
 | `GITHUB_DISPATCH_REPO` | Repository to dispatch (default `Gabbe-x/monad-validators`). |
 
 ## Deploying

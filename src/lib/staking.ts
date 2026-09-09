@@ -189,16 +189,21 @@ export async function getProposers(
   async function worker() {
     while (idx < blocks.length) {
       const b = blocks[idx++];
-      try {
-        const id = await client.readContract({
-          address: PRE,
-          abi: STAKING_ABI,
-          functionName: "getProposerValId",
-          blockNumber: BigInt(b),
-        });
-        out.set(b, Number(id));
-      } catch {
-        /* leave the block out; callers treat gaps as unknown */
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const id = await client.readContract({
+            address: PRE,
+            abi: STAKING_ABI,
+            functionName: "getProposerValId",
+            blockNumber: BigInt(b),
+          });
+          out.set(b, Number(id));
+          break;
+        } catch {
+          // Public gateways rate-limit bursts; back off briefly and retry before giving up
+          // on the block (callers treat missing blocks as unknown, not as zero).
+          if (attempt < 2) await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
+        }
       }
     }
   }
