@@ -19,7 +19,7 @@ concurrency:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -37,15 +37,17 @@ jobs:
           done
 
       - name: Collect mainnet
-        run: npx tsx collector/collect.ts mainnet --in data --out out --max-blocks 30000
+        run: npx tsx collector/collect.ts mainnet --in data --out out --max-blocks 20000
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        timeout-minutes: 11
         continue-on-error: true
 
       - name: Collect testnet
-        run: npx tsx collector/collect.ts testnet --in data --out out --max-blocks 30000
+        run: npx tsx collector/collect.ts testnet --in data --out out --max-blocks 20000
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        timeout-minutes: 11
         continue-on-error: true
 
       - name: Keep previous data for any network that failed this run
