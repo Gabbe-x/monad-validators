@@ -59,17 +59,48 @@ export interface HistoryFile {
 const DATA_BASE =
   process.env.HISTORY_BASE_URL ?? "https://raw.githubusercontent.com/Gabbe-x/monad-validators/data";
 
+const STALE_AFTER_S = 12 * 60;
+let lastDispatch = 0;
+
+/**
+ * GitHub's cron for scheduled workflows is best-effort and, on busy days, fires only every
+ * few hours. When GITHUB_DISPATCH_TOKEN (a fine-grained token with Actions: write on this
+ * repository) is configured, the app kicks the collector itself whenever the published
+ * history is older than STALE_AFTER_S. Visitors therefore keep the data fresh; the workflow's
+ * concurrency group makes duplicate dispatches harmless.
+ */
+function maybeDispatchCollector(updatedAt: number | null): void {
+  const token = process.env.GITHUB_DISPATCH_TOKEN;
+  const repo = process.env.GITHUB_DISPATCH_REPO ?? "Gabbe-x/monad-validators";
+  if (!token) return;
+  const now = Date.now() / 1000;
+  if (updatedAt !== null && now - updatedAt < STALE_AFTER_S) return;
+  if (now - lastDispatch < STALE_AFTER_S / 2) return;
+  lastDispatch = now;
+  fetch(`https://api.github.com/repos/${repo}/actions/workflows/collect.yml/dispatches`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "content-type": "application/json" },
+    body: JSON.stringify({ ref: "main" }),
+    signal: AbortSignal.timeout(5000),
+  }).catch(() => undefined);
+}
+
 async function fetchHistory(network: NetworkId): Promise<HistoryFile | null> {
   // raw.githubusercontent.com caches by URL for ~5 minutes; a slowly changing query
   // string keeps the app from seeing a stale copy for longer than that.
   const bust = Math.floor(Date.now() / 120_000);
   try {
     const res = await fetch(`${DATA_BASE}/${network}.json?v=${bust}`, { cache: "no-store" });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      maybeDispatchCollector(null);
+      return null;
+    }
     const data = (await res.json()) as HistoryFile;
     if (data.schema !== 1) return null;
+    maybeDispatchCollector(data.updatedAt);
     return data;
   } catch {
+    maybeDispatchCollector(null);
     return null;
   }
 }

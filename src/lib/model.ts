@@ -6,7 +6,7 @@ import { unstable_cache } from "next/cache";
 import type { Address } from "viem";
 import { NETWORKS, PROTOCOL, type NetworkId } from "./chains";
 import { commissionPct, toMon } from "./format";
-import { getHistory, proposerTotals, type EpochRecord, type HourBucket, type RegistryEntry } from "./history";
+import { getHistory, proposerTotals, type HourBucket, type RegistryEntry } from "./history";
 import {
   getDelegations,
   getDelegatorPositions,
@@ -150,7 +150,11 @@ async function buildOverview(network: NetworkId): Promise<Overview> {
   const blockTime =
     sorted.length > 1 ? (sorted[sorted.length - 1].timestamp - sorted[0].timestamp) / (sorted[sorted.length - 1].number - sorted[0].number) : 0;
 
-  const epochStart = epochStartBlock(history?.epochs ?? [], epoch.epoch);
+  // Boundary blocks sit at multiples of the epoch length (verified on both networks):
+  // epoch E is delimited by blocks (E-1)*L and E*L; consensus switches ~5,000 rounds after a boundary.
+  const L = PROTOCOL.epochLengthBlocks;
+  const epochStart = (epoch.epoch - 1) * L;
+  const boundary = epoch.inEpochDelayPeriod ? (epoch.epoch + 1) * L : epoch.epoch * L;
   const coveredHours = history ? history.hours.filter((h) => h.blocks > 0 && h.t + 3600 > now - 86_400).length : 0;
 
   return {
@@ -159,9 +163,9 @@ async function buildOverview(network: NetworkId): Promise<Overview> {
     generatedAt: Math.floor(now),
     epoch: {
       ...epoch,
-      blocksIntoEpoch: epochStart ? epoch.block - epochStart : null,
-      blocksToBoundary: epochStart ? Math.max(0, epochStart + PROTOCOL.epochLengthBlocks - epoch.block) : null,
-      boundaryBlock: epochStart ? epochStart + PROTOCOL.epochLengthBlocks : null,
+      blocksIntoEpoch: Math.max(0, epoch.block - epochStart),
+      blocksToBoundary: Math.max(0, boundary - epoch.block),
+      boundaryBlock: boundary,
     },
     head: { number: epoch.block, timestamp: epoch.timestamp, blockTimeSec: blockTime },
     totals: {
@@ -185,15 +189,6 @@ async function buildOverview(network: NetworkId): Promise<Overview> {
   };
 }
 
-/** First block of `epoch` as recorded by the collector (exact only if the collector saw the boundary). */
-function epochStartBlock(epochs: EpochRecord[], epoch: number): number | null {
-  const rec = epochs.find((e) => e.epoch === epoch);
-  if (!rec) return null;
-  const prev = epochs.find((e) => e.epoch === epoch - 1);
-  // The boundary is exact when the previous epoch's last block is adjacent to this epoch's first block.
-  if (prev && prev.lastBlock + 1 === rec.firstBlock) return rec.firstBlock;
-  return null;
-}
 
 export const getOverview = unstable_cache(buildOverview, ["overview-v1"], { revalidate: 60 });
 

@@ -29,7 +29,7 @@ export default async function EpochPage({ params }: Props) {
         <h1 className="text-2xl font-semibold">Epoch {v.epoch.epoch}</h1>
         <p className="mt-1 text-sm text-muted">
           {v.epoch.inEpochDelayPeriod
-            ? "The boundary block has passed; the new epoch starts after the 5,000-round delay."
+            ? `The boundary block ${fmtNum(v.epoch.epoch * PROTOCOL.epochLengthBlocks)} has passed; epoch ${v.epoch.epoch + 1} starts after the 5,000-round delay.`
             : "Delegations, undelegations and commission changes submitted now take effect in epoch " + (v.epoch.epoch + 1) + "."}
           {" "}Refreshed {timeAgo(v.generatedAt)}.
         </p>
@@ -39,7 +39,7 @@ export default async function EpochPage({ params }: Props) {
           <Stat
             label="Boundary block"
             value={v.epoch.boundaryBlock !== null ? fmtNum(v.epoch.boundaryBlock) : "–"}
-            sub={v.epoch.blocksToBoundary !== null ? `${fmtNum(v.epoch.blocksToBoundary)} blocks left${eta ? `, ~${eta}` : ""}` : "exact boundary not observed yet"}
+            sub={v.epoch.blocksToBoundary !== null ? `${fmtNum(v.epoch.blocksToBoundary)} blocks left${eta ? `, ~${eta}` : ""}` : ""}
           />
           <Stat label="Active set" value={`${v.activeCount} / ${PROTOCOL.activeValsetSize}`} sub={`next epoch: ${v.snapshotCount}`} />
           <Stat label="Min stake in active set" value={`${fmtCompact(v.minActiveStake)} MON`} sub="stake needed to enter the top 200" />

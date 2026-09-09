@@ -60,12 +60,14 @@ Environment variables (all optional):
 | --- | --- |
 | `HISTORY_BASE_URL` | Base URL of the history JSON files (default: the `data` branch of this repo on raw.githubusercontent.com). |
 | `NEXT_PUBLIC_SITE_URL` | Canonical site URL for metadata. |
+| `GITHUB_DISPATCH_TOKEN` | Fine-grained GitHub token with *Actions: write* on this repository. When set, the app triggers the collector workflow itself whenever the published history is older than 12 minutes. Recommended: GitHub's own cron is best-effort and can fall hours behind. |
+| `GITHUB_DISPATCH_REPO` | Repository to dispatch (default `Gabbe-x/monad-validators`). |
 
 ## Deploying
 
 1. Fork or push this repository to GitHub.
 2. Import it in Vercel (framework preset: Next.js, no settings needed). `vercel.json` disables deployments for the `data` branch.
-3. Enable the **Collect history** workflow under Actions (it runs every 10 minutes and needs no secrets beyond the default `GITHUB_TOKEN`).
+3. Enable the **Collect history** workflow under Actions (scheduled every 10 minutes, no secrets beyond the default `GITHUB_TOKEN`). Because GitHub schedules are best-effort, also set `GITHUB_DISPATCH_TOKEN` in Vercel so that page views keep the history fresh; an uptime pinger hitting the site every 5 minutes makes this fully reliable.
 4. If the repository is not `Gabbe-x/monad-validators`, set `HISTORY_BASE_URL` in Vercel to `https://raw.githubusercontent.com/<owner>/<repo>/data`.
 
 ## Data notes
