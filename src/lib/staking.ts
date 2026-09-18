@@ -60,9 +60,9 @@ export interface WithdrawalRequest {
 
 type SetFn = "getConsensusValidatorSet" | "getSnapshotValidatorSet" | "getExecutionValidatorSet";
 
-export async function getEpoch(network: NetworkId): Promise<EpochInfo> {
+export async function getEpoch(network: NetworkId, atBlock?: number): Promise<EpochInfo> {
   const client = getClient(network);
-  const block = await client.getBlock({ blockTag: "latest" });
+  const block = atBlock === undefined ? await client.getBlock({ blockTag: "latest" }) : await client.getBlock({ blockNumber: BigInt(atBlock) });
   const [epoch, inDelay] = await client.readContract({
     address: PRE,
     abi: STAKING_ABI,

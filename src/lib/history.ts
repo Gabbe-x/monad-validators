@@ -44,6 +44,8 @@ export interface EpochRecord {
 
 export interface HistoryFile {
   schema: 1;
+  /** 2 = every block attributed to its real epoch (switches located by binary search). */
+  epochAttribution?: number;
   network: NetworkId;
   updatedAt: number;
   head: number;

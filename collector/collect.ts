@@ -8,7 +8,7 @@
  *   4. refreshes the validator registry (monad-developers/validator-info) every 6 hours,
  *   5. writes out/<network>.json; the workflow force-pushes `out/` as the new `data` branch.
  *
- * Usage: npx tsx collector/collect.ts <mainnet|testnet> [--max-blocks N] [--in DIR] [--out DIR]
+ * Usage: npx tsx collector/collect.ts <mainnet|testnet> [--max-blocks N] [--in DIR] [--out DIR] [--to BLOCK]
  */
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
@@ -73,7 +73,9 @@ async function main() {
   const prev: HistoryFile | null = existsSync(inPath) ? (JSON.parse(readFileSync(inPath, "utf8")) as HistoryFile) : null;
   if (prev) console.log(`loaded previous state: head ${prev.head}, ${prev.hours.length} hour buckets, ${prev.epochs.length} epochs`);
 
-  const epochInfo = await getEpoch(network);
+  // --to pins the scan head to a past block (backfills and tests); default is the chain head.
+  const toArg = arg("--to", "");
+  const epochInfo = await getEpoch(network, toArg ? Number(toArg) : undefined);
   const head = epochInfo.block;
   const headTs = epochInfo.timestamp;
 
@@ -97,34 +99,40 @@ async function main() {
   const tsOf = (b: number) => Math.round(fromTs + (b - from) * blockTime);
   console.log(`got ${proposers.size} proposers in ${((Date.now() - t0) / 1000).toFixed(1)}s, block time ${blockTime.toFixed(3)}s`);
 
-  // Epoch bookkeeping: determine the epoch of scanned blocks. Epoch changes are rare
-  // (every 50k blocks) so we only need to locate the boundary when the epoch differs
-  // from the previous run.
-  const epochs: EpochRecord[] = prev?.epochs ? prev.epochs.map((e) => ({ ...e })) : [];
-  let current = epochs.find((e) => e.epoch === epochInfo.epoch);
-  let boundary: number | null = null; // first block of the current epoch, if inside the scanned range
-  if (!current || (prev && prev.epoch !== epochInfo.epoch)) {
-    boundary = await findBoundary(network, epochInfo.epoch, from, to);
-    console.log(`epoch ${epochInfo.epoch} starts at block ${boundary ?? "unknown (before scan range)"}`);
+  // Epoch bookkeeping. Runs can be hours apart (GitHub schedules are best-effort), so the
+  // scanned range may span several epochs. Locate every epoch switch inside [from, to] by
+  // binary search on getEpoch() at block tags and attribute each block to its real epoch.
+  // Records written before attribution v2 could be wrong under sparse runs: drop them once.
+  const epochs: EpochRecord[] = prev?.epochs && prev.epochAttribution === 2 ? prev.epochs.map((e) => ({ ...e, p: { ...e.p } })) : [];
+  const epochFrom = await epochAt(network, from);
+  const flips: { epoch: number; block: number }[] = [];
+  for (let E = epochFrom + 1; E <= epochInfo.epoch; E++) {
+    const block = await findBoundary(network, E, flips.length ? flips[flips.length - 1].block : from, to);
+    if (block !== null) flips.push({ epoch: E, block });
   }
-  if (!current) {
-    const sets = await getValidatorSets(network);
-    const vals = await getValidators(network, sets.consensus);
-    const stake: Record<string, string> = {};
-    for (const v of vals) stake[String(v.id)] = v.consensusStake;
-    current = {
-      epoch: epochInfo.epoch,
-      firstBlock: boundary ?? from,
-      lastBlock: to,
-      startedAt: tsOf(boundary ?? from),
-      blocks: 0,
-      p: {},
-      stake,
-      valset: sets.consensus,
-    };
-    epochs.push(current);
+  if (flips.length) console.log("epoch switches in range:", flips.map((f) => `${f.epoch}@${f.block}`).join(", "));
+  const epochOf = (b: number): number => {
+    let e = epochFrom;
+    for (const f of flips) if (b >= f.block) e = f.epoch;
+    return e;
+  };
+  const recordFor = new Map<number, EpochRecord>();
+  for (const E of new Set([epochFrom, ...flips.map((f) => f.epoch)])) {
+    let rec = epochs.find((e) => e.epoch === E);
+    if (!rec) {
+      const flip = flips.find((f) => f.epoch === E);
+      const first = flip ? flip.block : from;
+      // Stake and set are read at a block inside the epoch, not at the head.
+      const at = BigInt(Math.min(to, first + 50));
+      const sets = await getValidatorSets(network, at);
+      const vals = await getValidators(network, sets.consensus, at);
+      const stake: Record<string, string> = {};
+      for (const v of vals) stake[String(v.id)] = v.consensusStake;
+      rec = { epoch: E, firstBlock: first, lastBlock: first, startedAt: tsOf(first), blocks: 0, p: {}, stake, valset: sets.consensus };
+      epochs.push(rec);
+    }
+    recordFor.set(E, rec);
   }
-  const previousEpoch = epochs.find((e) => e.epoch === epochInfo.epoch - 1);
 
   // Hour buckets.
   const hours = new Map<number, HourBucket>();
@@ -143,17 +151,12 @@ async function main() {
     bucket.blocks++;
     bucket.p[String(p)] = (bucket.p[String(p)] ?? 0) + 1;
 
-    const rec = boundary !== null && b < boundary && previousEpoch ? previousEpoch : current;
+    const rec = recordFor.get(epochOf(b))!;
     rec.blocks++;
     rec.p[String(p)] = (rec.p[String(p)] ?? 0) + 1;
     if (b > rec.lastBlock) rec.lastBlock = b;
     if (b < rec.firstBlock) rec.firstBlock = b;
   }
-  if (boundary !== null) {
-    current.firstBlock = boundary;
-    if (previousEpoch) previousEpoch.lastBlock = boundary - 1;
-  }
-
   const hoursOut = Array.from(hours.values())
     .sort((a, b) => a.t - b.t)
     .slice(-HOURS_KEPT);
@@ -162,6 +165,7 @@ async function main() {
 
   const out: HistoryFile = {
     schema: 1,
+    epochAttribution: 2,
     network,
     updatedAt: Math.floor(Date.now() / 1000),
     head,
@@ -179,22 +183,25 @@ async function main() {
 }
 
 /** Binary-search the first block of `epoch` inside [lo, hi]; null if the epoch already started before `lo`. */
+async function epochAt(network: NetworkId, b: number): Promise<number> {
+  const [e] = await getClient(network).readContract({
+    address: PROTOCOL.stakingPrecompile,
+    abi: STAKING_ABI,
+    functionName: "getEpoch",
+    blockNumber: BigInt(b),
+  });
+  return Number(e);
+}
+
+/** First block in (lo, hi] whose epoch is >= `epoch`; null if `lo` is already there or `hi` is not yet. */
 async function findBoundary(network: NetworkId, epoch: number, lo: number, hi: number): Promise<number | null> {
-  const epochAt = async (b: number) => {
-    const [e] = await getClient(network).readContract({
-      address: PROTOCOL.stakingPrecompile,
-      abi: STAKING_ABI,
-      functionName: "getEpoch",
-      blockNumber: BigInt(b),
-    });
-    return Number(e);
-  };
-  if ((await epochAt(lo)) >= epoch) return null;
+  if ((await epochAt(network, lo)) >= epoch) return null;
+  if ((await epochAt(network, hi)) < epoch) return null;
   let a = lo;
   let b = hi;
   while (b - a > 1) {
     const mid = Math.floor((a + b) / 2);
-    if ((await epochAt(mid)) >= epoch) b = mid;
+    if ((await epochAt(network, mid)) >= epoch) b = mid;
     else a = mid;
   }
   return b;
